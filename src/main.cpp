@@ -4,11 +4,13 @@
 #define FPS_PRINTLEN 9 // 8 chars + '\0+ '\0'
 #define X_ORIGIN 30
 #define Y_ORIGIN 30
-#define MOVE_AMOUNT 200
-#define ROTATE_AMOUNT 50
+#define MOVE_AMOUNT 10
+#define ROTATE_AMOUNT 1
+#define FLIGHT_MODE_MOVE 0.0009
 #define IDLE_MOVEMENT (ROTATE_AMOUNT / 50)
 #define COLOR_THRESHOLD 95
 #define COLOR_MAX 255
+#define FLIPPED_COORDINATES -1
 
 using namespace std;
 
@@ -24,11 +26,11 @@ void move3dobject(Vector3d direction, std::vector<Polygon> &polygons)
     }
 }
 
-void turn3dobject(Vector3d axis, double alpha, std::vector<Polygon> &polygons)
+Vector3d getCenter(std::vector<Polygon> &polygons)
 {
 
     std::vector<double> xs, ys, zs;
-    Vector3d center, ba, ca;
+    Vector3d center;
     int j = 0;
 
     //sum all vertex nodes up
@@ -62,6 +64,16 @@ void turn3dobject(Vector3d axis, double alpha, std::vector<Polygon> &polygons)
     center.x /= j;
     center.y /= j;
     center.z /= j;
+
+    return center;
+}
+
+void turn3dobject(Vector3d axis, double alpha, std::vector<Polygon> &polygons)
+{
+
+    Vector3d ba, ca, center;
+
+    center = getCenter(polygons);
 
     //move the object to (0,0,0), apply turning matrix and then move back to original coordinates
     for (std::vector<Polygon>::iterator i = polygons.begin(); i != polygons.end(); ++i)
@@ -288,7 +300,8 @@ int parse_file(const char *filename, std::vector<Polygon> &result, bool colorful
             {
                 // red colors
                 color.x -= 1;
-                if(color.x < COLOR_THRESHOLD){
+                if (color.x < COLOR_THRESHOLD)
+                {
                     color.x = 0;
                     color.y = COLOR_MAX;
                     currentColor = 1;
@@ -298,7 +311,8 @@ int parse_file(const char *filename, std::vector<Polygon> &result, bool colorful
             {
                 // green colors
                 color.y -= 1;
-                if(color.y < COLOR_THRESHOLD){
+                if (color.y < COLOR_THRESHOLD)
+                {
                     color.y = 0;
                     color.z = COLOR_MAX;
                     currentColor = 2;
@@ -308,19 +322,19 @@ int parse_file(const char *filename, std::vector<Polygon> &result, bool colorful
             {
                 // blue colors
                 color.z -= 1;
-                if(color.z < COLOR_THRESHOLD){
+                if (color.z < COLOR_THRESHOLD)
+                {
                     color.z = 0;
                     color.x = COLOR_MAX;
                     currentColor = 0;
                 }
             }
-            tmp.push_back(Polygon(a,b,c,n, color, color, color));
+            tmp.push_back(Polygon(a, b, c, n, color, color, color));
         }
         else
         {
             tmp.push_back(Polygon(a, b, c, n));
         }
-
     }
 
     offset = Vector3d((X_ORIGIN - minx), (Y_ORIGIN - miny), (-1) * ((abs(maxz) - abs(minz)) / 2));
@@ -339,6 +353,37 @@ int parse_file(const char *filename, std::vector<Polygon> &result, bool colorful
 
 int main(int argc, char **argv)
 {
+
+    SDL_Window *window = NULL;
+    SDL_Surface *screenSurface = NULL;
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    {
+        std::cout << "Error initialising SDL Library! SDL_ERROR: " << SDL_GetError() << endl;
+        return 1;
+    }
+    else
+    {
+        //Create window
+        window = SDL_CreateWindow("SDL Game", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_SHOWN | /* SDL_WINDOW_HIDDEN |*/ SDL_WINDOW_INPUT_FOCUS);
+        if (window == NULL)
+        {
+            printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
+        }
+        else
+        {
+            //Get window surface
+            screenSurface = SDL_GetWindowSurface(window);
+
+            //Fill the surface white
+            SDL_FillRect(screenSurface, NULL, SDL_MapRGB(screenSurface->format, 0xFF, 0xFF, 0xFF));
+
+            //Update the surface
+            SDL_UpdateWindowSurface(window);
+
+            std::cout << "Hiding window." << endl;
+            //SDL_Delay(1000);
+        }
+    }
 
     // Parsed object vector
     std::vector<Polygon> polys;
@@ -369,79 +414,138 @@ int main(int argc, char **argv)
     setlocale(LC_ALL, "");
 
     // Local vars
-    int c, hits, fps = 0, oldfps = 0;
-    bool idle = true;
+    int fps = 0, oldfps = 0;
+    bool flight_mode = true;
     char buf[255];
     std::array<int, KEY_MAX> keyhits;
     keyhits.fill(0);
     auto start = std::chrono::system_clock::now();
     auto last = start;
-    double deltaTime = 1;
+    double deltaTime = 1, velocity = 1;
+    const Uint8 *keys = SDL_GetKeyboardState(NULL);
+    Vector3d planex = Vector3d(0, 1, 0), planey = Vector3d(0, 0, -1), planez = Vector3d(1, 0, 0);
+    SDL_Event event;
+
+    float movex_d = 0, movey_d = 0;
+    Vector3d center_d = Vector3d(0, 0, 1);
 
     // Main loop
     while (true)
     {
 
-        hits = 0;
-        while ((c = getch()) != -1)
+        //refresh screen and get events
+        refresh();
+        SDL_PumpEvents();
+
+        if (SDL_PollEvent(&event))
         {
-            keyhits[c] = 1;
-            ++hits;
+            if (event.type == SDL_QUIT)
+            {
+                keyhits['q'] = 1;
+                break;
+            }
         }
 
-        if (idle && hits == 0)
-        {
-            turn3dobject(Vector3d(0, 1, 0), -IDLE_MOVEMENT * deltaTime, polys);
-        }
-
-        if (keyhits[' '] == 1)
-        {
-            idle = !idle;
-        }
-
-        if (keyhits['q'] == 1)
+        if (keys[SDL_SCANCODE_ESCAPE] == 1)
         {
             break;
         }
-        if (keyhits['j'] == 1)
+        if (keys[SDL_SCANCODE_F] == 1)
         {
-            turn3dobject(Vector3d(0, 1, 0), ROTATE_AMOUNT * deltaTime, polys);
+            flight_mode = !flight_mode;
         }
-        if (keyhits['l'] == 1)
+        if (keys[SDL_SCANCODE_I])
         {
-            turn3dobject(Vector3d(0, 1, 0), -ROTATE_AMOUNT * deltaTime, polys);
+
+            double alpha = ROTATE_AMOUNT * deltaTime;
+            turn3dobject(planez, alpha, polys);
+            planex.turnonaxis(planez, alpha);
+            planey.turnonaxis(planez, alpha);
         }
-        if (keyhits['i'] == 1)
+        if (keys[SDL_SCANCODE_K])
         {
-            turn3dobject(Vector3d(1, 0, 0), ROTATE_AMOUNT * deltaTime, polys);
+
+            double alpha = -ROTATE_AMOUNT * deltaTime;
+            turn3dobject(planez, alpha, polys);
+            planex.turnonaxis(planez, alpha);
+            planey.turnonaxis(planez, alpha);
         }
-        if (keyhits['k'] == 1)
+        if (keys[SDL_SCANCODE_U])
         {
-            turn3dobject(Vector3d(1, 0, 0), -ROTATE_AMOUNT * deltaTime, polys);
+
+            double alpha = ROTATE_AMOUNT * deltaTime;
+            turn3dobject(planex, alpha, polys);
+            planey.turnonaxis(planex, alpha);
+            planez.turnonaxis(planex, alpha);
         }
-        if (keyhits['u'] == 1)
+        if (keys[SDL_SCANCODE_O])
         {
-            turn3dobject(Vector3d(0, 0, 1), ROTATE_AMOUNT * deltaTime, polys);
+
+            double alpha = -ROTATE_AMOUNT * deltaTime;
+            turn3dobject(planex, alpha, polys);
+            planey.turnonaxis(planex, alpha);
+            planez.turnonaxis(planex, alpha);
         }
-        if (keyhits['o'] == 1)
+        if (keys[SDL_SCANCODE_J])
         {
-            turn3dobject(Vector3d(0, 0, 1), -ROTATE_AMOUNT * deltaTime, polys);
+
+            double alpha = ROTATE_AMOUNT * deltaTime;
+            turn3dobject(planey, alpha, polys);
+            planex.turnonaxis(planey, alpha);
+            planez.turnonaxis(planey, alpha);
         }
-        if (keyhits['w'] == 1)
+        if (keys[SDL_SCANCODE_L])
         {
-            move3dobject(Vector3d(0, -1, 0) * MOVE_AMOUNT * deltaTime, polys);
+
+            double alpha = -ROTATE_AMOUNT * deltaTime;
+            turn3dobject(planey, alpha, polys);
+            planex.turnonaxis(planey, alpha);
+            planez.turnonaxis(planey, alpha);
         }
-        if (keyhits['a'] == 1)
+        if (keys[SDL_SCANCODE_W] == 1)
+        {
+            //move3dobject(Vector3d(0, -1, 0) * MOVE_AMOUNT * deltaTime, polys);
+            velocity += 0.1;
+        }
+        /*if (keys[SDL_SCANCODE_A] == 1)
         {
             move3dobject(Vector3d(-1, 0, 0) * MOVE_AMOUNT * deltaTime, polys);
-        }
-        if (keyhits['s'] == 1)
+        }*/
+        if (keys[SDL_SCANCODE_S] == 1)
         {
-            move3dobject(Vector3d(0, 1, 0) * MOVE_AMOUNT * deltaTime, polys);
-        }
-        if (keyhits['d'] == 1)
+            //move3dobject(Vector3d(0, 1, 0) * MOVE_AMOUNT * deltaTime, polys);
+            if(velocity > 1){
+                velocity -= 0.1;
+            }
+        }/*
+        if (keys[SDL_SCANCODE_D] == 1)
         {
             move3dobject(Vector3d(1, 0, 0) * MOVE_AMOUNT * deltaTime, polys);
+        }*/
+        if (flight_mode)
+        {
+            float direction_len, cosphi, angle;
+            static Vector3d camera_angle(1, 0, 0), center;
+            static float camera_len = camera_angle.lenght(), movex, movey;
+
+            direction_len = planex.lenght();
+            cosphi = camera_angle.scalar_product(planey) / (camera_len * direction_len);
+            angle = acos(cosphi) * 180.0 / PI;
+
+            movex = FLIPPED_COORDINATES * planex.x * FLIGHT_MODE_MOVE * angle * velocity;
+            movey = FLIPPED_COORDINATES * planex.y * FLIGHT_MODE_MOVE * angle * velocity;
+            center = getCenter(polys);
+
+            if (((center.x < 0) && (movex < 0)) || ((center.x > SCREENWIDTH) && (movex > 0)))
+                movex = 0;
+            if (((center.y < 0) && (movey < 0)) || ((center.y > SCREENHEIGHT) && (movey > 0)))
+                movey = 0;
+
+            move3dobject(Vector3d(movex, movey, 0), polys);
+
+            center_d = center;
+            movex_d = movex;
+            movey_d = movey;
         }
 
         // render current iteration
@@ -465,13 +569,14 @@ int main(int argc, char **argv)
 
         std::ostringstream stream;
         long distance = std::distance(polys.begin(), polys.end());
-        stream << "Currently rendering " << distance << " Polygons per iteration\n";
+        stream << "Currently rendering " << distance << " Polygons per iteration. Center_d: " << center_d.to_string() << " movex: " << movex_d << " movey: " << movey_d << "\n";
         wm.printxyc(0, 1, ColorLut::getInstance().rgb_to_8bit(255, 0, 0), COLOR_BLACK, true, stream.str().c_str());
 
         ++fps;
-
-        keyhits.fill(0);
     }
+
+    SDL_DestroyWindow(window);
+    SDL_Quit();
 
     return 0;
 }

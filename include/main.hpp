@@ -13,6 +13,7 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <SDL2/SDL.h>
 #include "dimensions.hpp"
 #include "windowmanager.hpp"
 #include "vector3d.hpp"

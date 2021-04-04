@@ -1,5 +1,8 @@
 #include "../include/render.hpp"
 
+#define Z_PERSPECTIVE 0.01 
+#define Z_PERSPECTIVE_COLOR 3
+
 bool sortbyz(Polygon &lhs, Polygon &rhs)
 {
     return lhs.getlastz() < rhs.getlastz();
@@ -30,7 +33,7 @@ void fast_bresenham(Windowmanager &wm, Vector3d &colorstart, Vector3d &colorend,
     }
     else
     {
-        zcolors *= 5;
+        zcolors *= Z_PERSPECTIVE_COLOR;
     }
     if (zend > 0)
     {
@@ -38,7 +41,7 @@ void fast_bresenham(Windowmanager &wm, Vector3d &colorstart, Vector3d &colorend,
     }
     else
     {
-        zcolore *= 5;
+        zcolore *= Z_PERSPECTIVE_COLOR;
     }
 
     // calc distances
@@ -114,12 +117,77 @@ void fast_bresenham(Windowmanager &wm, Vector3d &colorstart, Vector3d &colorend,
     }
 }
 
+void fast_bresenham3d(Windowmanager &wm, Vector3d &start, Vector3d &end, Vector3d &colorstart, Vector3d &colorend){
+
+    ColorLut &lut = ColorLut::getInstance();
+/*
+
+    int zcolors = start.z, zcolore = end.z;
+
+    if (zcolors > 0)
+    {
+        zcolors = 0;
+    }
+    else
+    {
+        zcolors *= 5;
+    }
+    if (zcolore > 0)
+    {
+        zcolore = 0;
+    }
+    else
+    {
+        zcolore *= 5;
+    }
+*/
+
+
+    int x0 = static_cast<int>(start.x), x1 = static_cast<int>(end.x), y0 = static_cast<int>(start.y), y1 = static_cast<int>(end.y), z0 = static_cast<int>(start.z), z1 = static_cast<int>(end.z);
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int dz = abs(z1 - z0), sz = z0 < z1 ? 1 : -1;
+    int dm = max(dx,dy,dz), i = dm;
+    x1 = y1 = z1 = dm/2;
+    short color;
+
+    for(;;){
+/*
+        float fast = static_cast<float>(dm);
+        float red = ((i/fast) * (colorstart.x + zcolors)) + (((dm - i)/fast) * colorend.x + zcolore);
+        float green = ((i/fast) * (colorstart.y + zcolors)) + (((dm - i)/fast) * colorend.y + zcolore);
+        float blue = ((i/fast) * (colorstart.z + zcolors)) + (((dm - i)/fast) * colorend.z + zcolore);
+        color = lut.getInstance().rgb_to_8bit(red, green, blue); */
+
+        float fast = static_cast<float>(dm);
+        float red = ((i/fast) * (colorstart.x + z1)) + (((dm - i)/fast) * colorend.x + z1);
+        float green = ((i/fast) * (colorstart.y + z1)) + (((dm - i)/fast) * colorend.y + z1);
+        float blue = ((i/fast) * (colorstart.z + z1)) + (((dm - i)/fast) * colorend.z + z1);
+        color = lut.getInstance().rgb_to_8bit(red, green, blue); 
+
+        // rasterise the pixel
+        wm.printxyc(x1, y1, color, color, true," ");
+        
+        if(i-- == 0) break;
+
+        x1 -= dx; if(x1 < 0){ x1 += dm; x0 += sx;}
+        y1 -= dy; if(y1 < 0){ y1 += dm; y0 += sy;}
+        z1 -= dz; if(z1 < 0){ z1 += dm; z0 += sz;}
+
+    }
+
+}
+
 void render(Windowmanager &wm, Polygon poly)
 {
     // rasterise the polygon from a-b, b-c and c-a
     fast_bresenham(wm, poly.a_color, poly.b_color, wm.screenheight, poly.a.x, poly.a.y, poly.a.z, poly.b.x, poly.b.y, poly.b.z);
     fast_bresenham(wm, poly.b_color, poly.c_color, wm.screenheight, poly.b.x, poly.b.y, poly.b.z, poly.c.x, poly.c.y, poly.c.z);
     fast_bresenham(wm, poly.c_color, poly.a_color, wm.screenheight, poly.c.x, poly.c.y, poly.c.z, poly.a.x, poly.a.y, poly.a.z);
+    
+//    fast_bresenham3d(wm, poly.a, poly.b, poly.a_color, poly.b_color);
+ //   fast_bresenham3d(wm, poly.b, poly.c, poly.b_color, poly.c_color);
+  //  fast_bresenham3d(wm, poly.c, poly.a, poly.c_color, poly.a_color);
 
     return;
 }
