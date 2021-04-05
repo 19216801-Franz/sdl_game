@@ -7,24 +7,17 @@
 #define MOVE_AMOUNT 10
 #define ROTATE_AMOUNT 1
 #define FLIGHT_MODE_MOVE 0.0009
+#define SCALE_AMOUNT 0.001
 #define IDLE_MOVEMENT (ROTATE_AMOUNT / 50)
 #define COLOR_THRESHOLD 95
 #define COLOR_MAX 255
 #define FLIPPED_COORDINATES -1
+#define PLANE_FILE "assets/plane.stl"
+#define PLANE_SCALE 0.3
+#define RING_FILE "assets/ring.stl"
+#define RING_SCALE 1500.0
 
 using namespace std;
-
-void move3dobject(Vector3d direction, std::vector<Polygon> &polygons)
-{
-
-    for (std::vector<Polygon>::iterator i = polygons.begin(); i != polygons.end(); ++i)
-    {
-
-        (*i).a += direction;
-        (*i).b += direction;
-        (*i).c += direction;
-    }
-}
 
 Vector3d getCenter(std::vector<Polygon> &polygons)
 {
@@ -68,6 +61,56 @@ Vector3d getCenter(std::vector<Polygon> &polygons)
     return center;
 }
 
+void move3dobjectTO(Vector3d destination, std::vector<Polygon> &polygons)
+{
+    Vector3d center = getCenter(polygons);
+
+    for (std::vector<Polygon>::iterator i = polygons.begin(); i != polygons.end(); ++i)
+    {
+
+        (*i).a -= center;
+        (*i).b -= center;
+        (*i).c -= center;
+
+        (*i).a += destination;
+        (*i).b += destination;
+        (*i).c += destination;
+    }
+}
+
+void move3dobject(Vector3d direction, std::vector<Polygon> &polygons)
+{
+
+    for (std::vector<Polygon>::iterator i = polygons.begin(); i != polygons.end(); ++i)
+    {
+
+        (*i).a += direction;
+        (*i).b += direction;
+        (*i).c += direction;
+    }
+}
+void scale3dobject(float alpha, std::vector<Polygon> &polygons)
+{
+
+    Vector3d center = getCenter(polygons);
+
+    for (std::vector<Polygon>::iterator i = polygons.begin(); i != polygons.end(); ++i)
+    {
+
+        (*i).a -= center;
+        (*i).b -= center;
+        (*i).c -= center;
+
+        (*i).a *= alpha;
+        (*i).b *= alpha;
+        (*i).c *= alpha;
+
+        (*i).a += center;
+        (*i).b += center;
+        (*i).c += center;
+    }
+}
+
 void turn3dobject(Vector3d axis, double alpha, std::vector<Polygon> &polygons)
 {
 
@@ -100,7 +143,7 @@ void turn3dobject(Vector3d axis, double alpha, std::vector<Polygon> &polygons)
     }
 }
 
-int parse_file(const char *filename, std::vector<Polygon> &result, bool colorful)
+int parse_file(const char *filename, std::vector<Polygon> &result, bool colorful, Vector3d static_color)
 {
 
     std::vector<Polygon> tmp;
@@ -117,9 +160,9 @@ int parse_file(const char *filename, std::vector<Polygon> &result, bool colorful
     std::string endfacet("endfacet");
     std::string endsolid("endsolid");
 
-    Vector3d n, a, b, c, ba, ca, offset, color = Vector3d(COLOR_MAX, 0, 0);
+    Vector3d n, a, b, c, ba, ca, offset/*, color = Vector3d(COLOR_MAX, 0, 0)*/;
     double x, minx, maxx, y, miny, maxy, z, minz, maxz;
-    long currentColor = 0;
+    //long currentColor = 0;
 
     if (!infile)
     {
@@ -295,7 +338,7 @@ int parse_file(const char *filename, std::vector<Polygon> &result, bool colorful
 
         //we succesfully parsed a whole Polygon. Lets append it on our container.
         if (colorful)
-        {
+        { /*
             if (currentColor == 0)
             {
                 // red colors
@@ -330,6 +373,8 @@ int parse_file(const char *filename, std::vector<Polygon> &result, bool colorful
                 }
             }
             tmp.push_back(Polygon(a, b, c, n, color, color, color));
+            */
+            tmp.push_back(Polygon(a, b, c, n, static_color, static_color, static_color));
         }
         else
         {
@@ -386,27 +431,28 @@ int main(int argc, char **argv)
     }
 
     // Parsed object vector
-    std::vector<Polygon> polys;
+    std::vector<Polygon> plane_object, ring_object;
 
-    if (!(argc == 2 || (argc == 3 && (std::string(argv[2]).compare("-colorful") == 0))))
+    if (parse_file(PLANE_FILE, plane_object, true, Vector3d(0, 255, 0)) == -1)
     {
-        cout << "Please specifiy file to inspect. Usage: './render file.stl'" << endl;
-        return 1;
-    }
-
-    if (std::string(argv[1]).compare("-help") == 0)
-    {
-        cout << "Usage: './render file.stl'. If you would like to randomly color polygons use './render file.stl -colorful'" << endl;
-        return 0;
-    }
-    else if (parse_file(argv[1], polys, (argc == 3)) == -1)
-    {
-        cout << "Parsing of the file failed.\nPlease make sure file is in directory, and in ASCII STL format." << endl;
+        cout << "Parsing of the plane failed.\nPlease make sure file is in directory, and in ASCII STL format." << endl;
         return 1;
     }
     else
     {
-        cout << "Parsed file succesfully! :-)" << endl;
+        scale3dobject(PLANE_SCALE, plane_object);
+        move3dobjectTO(Vector3d(0, CENTERY, 0), plane_object);
+    }
+
+    if (parse_file(RING_FILE, ring_object, true, Vector3d(255, 0, 0)) == -1)
+    {
+        cout << "Parsing of the ring failed.\nPlease make sure file is in directory, and in ASCII STL format." << endl;
+        return 1;
+    }
+    else
+    {
+        scale3dobject(RING_SCALE, ring_object);
+        move3dobjectTO(Vector3d(CENTERX, SCREENHEIGHT, 0), ring_object);
     }
 
     // Initialise ncurses library and windows
@@ -421,12 +467,12 @@ int main(int argc, char **argv)
     keyhits.fill(0);
     auto start = std::chrono::system_clock::now();
     auto last = start;
-    double deltaTime = 1, velocity = 1;
+    float deltaTime = 1, velocity = 1;
     const Uint8 *keys = SDL_GetKeyboardState(NULL);
     Vector3d planex = Vector3d(0, 1, 0), planey = Vector3d(0, 0, -1), planez = Vector3d(1, 0, 0);
     SDL_Event event;
 
-    float movex_d = 0, movey_d = 0;
+    float /*movex_d = 0, movey_d = 0,*/ scale = 1;
     Vector3d center_d = Vector3d(0, 0, 1);
 
     // Main loop
@@ -458,7 +504,7 @@ int main(int argc, char **argv)
         {
 
             double alpha = ROTATE_AMOUNT * deltaTime;
-            turn3dobject(planez, alpha, polys);
+            turn3dobject(planez, alpha, plane_object);
             planex.turnonaxis(planez, alpha);
             planey.turnonaxis(planez, alpha);
         }
@@ -466,7 +512,7 @@ int main(int argc, char **argv)
         {
 
             double alpha = -ROTATE_AMOUNT * deltaTime;
-            turn3dobject(planez, alpha, polys);
+            turn3dobject(planez, alpha, plane_object);
             planex.turnonaxis(planez, alpha);
             planey.turnonaxis(planez, alpha);
         }
@@ -474,7 +520,7 @@ int main(int argc, char **argv)
         {
 
             double alpha = ROTATE_AMOUNT * deltaTime;
-            turn3dobject(planex, alpha, polys);
+            turn3dobject(planex, alpha, plane_object);
             planey.turnonaxis(planex, alpha);
             planez.turnonaxis(planex, alpha);
         }
@@ -482,7 +528,7 @@ int main(int argc, char **argv)
         {
 
             double alpha = -ROTATE_AMOUNT * deltaTime;
-            turn3dobject(planex, alpha, polys);
+            turn3dobject(planex, alpha, plane_object);
             planey.turnonaxis(planex, alpha);
             planez.turnonaxis(planex, alpha);
         }
@@ -490,7 +536,7 @@ int main(int argc, char **argv)
         {
 
             double alpha = ROTATE_AMOUNT * deltaTime;
-            turn3dobject(planey, alpha, polys);
+            turn3dobject(planey, alpha, plane_object);
             planex.turnonaxis(planey, alpha);
             planez.turnonaxis(planey, alpha);
         }
@@ -498,35 +544,49 @@ int main(int argc, char **argv)
         {
 
             double alpha = -ROTATE_AMOUNT * deltaTime;
-            turn3dobject(planey, alpha, polys);
+            turn3dobject(planey, alpha, plane_object);
             planex.turnonaxis(planey, alpha);
             planez.turnonaxis(planey, alpha);
         }
         if (keys[SDL_SCANCODE_W] == 1)
         {
-            //move3dobject(Vector3d(0, -1, 0) * MOVE_AMOUNT * deltaTime, polys);
+            //move3dobject(Vector3d(0, -1, 0) * MOVE_AMOUNT * deltaTime, plane_object);
             velocity += 0.1;
         }
-        /*if (keys[SDL_SCANCODE_A] == 1)
+        if (keys[SDL_SCANCODE_A] == 1)
         {
-            move3dobject(Vector3d(-1, 0, 0) * MOVE_AMOUNT * deltaTime, polys);
-        }*/
+            //move3dobject(Vector3d(-1, 0, 0) * MOVE_AMOUNT * deltaTime, plane_object);
+            scale3dobject(1 - SCALE_AMOUNT, ring_object);
+            scale *= 1 - SCALE_AMOUNT;
+            move3dobject(Vector3d(0, 0, -1) * (1 - SCALE_AMOUNT), ring_object);
+            center_d = getCenter(ring_object);
+        }
         if (keys[SDL_SCANCODE_S] == 1)
         {
-            //move3dobject(Vector3d(0, 1, 0) * MOVE_AMOUNT * deltaTime, polys);
-            if(velocity > 1){
+            //move3dobject(Vector3d(0, 1, 0) * MOVE_AMOUNT * deltaTime, plane_object);
+            if (velocity > 1)
+            {
                 velocity -= 0.1;
             }
-        }/*
+        }
         if (keys[SDL_SCANCODE_D] == 1)
         {
-            move3dobject(Vector3d(1, 0, 0) * MOVE_AMOUNT * deltaTime, polys);
-        }*/
+            //move3dobject(Vector3d(1, 0, 0) * MOVE_AMOUNT * deltaTime, plane_object);
+            scale3dobject(1 + SCALE_AMOUNT, ring_object);
+            scale *= 1 + SCALE_AMOUNT;
+            move3dobject(Vector3d(0, 0, 1) * (1 - SCALE_AMOUNT), ring_object);
+            center_d = getCenter(ring_object);
+        }
+        if (keys[SDL_SCANCODE_R] == 1)
+        {
+            move3dobjectTO(Vector3d(CENTERX, CENTERY, 0), plane_object);
+        }
         if (flight_mode)
         {
             float direction_len, cosphi, angle;
             static Vector3d camera_angle(1, 0, 0), center;
             static float camera_len = camera_angle.lenght(), movex, movey;
+            center_d = getCenter(ring_object);
 
             direction_len = planex.lenght();
             cosphi = camera_angle.scalar_product(planey) / (camera_len * direction_len);
@@ -534,22 +594,64 @@ int main(int argc, char **argv)
 
             movex = FLIPPED_COORDINATES * planex.x * FLIGHT_MODE_MOVE * angle * velocity;
             movey = FLIPPED_COORDINATES * planex.y * FLIGHT_MODE_MOVE * angle * velocity;
-            center = getCenter(polys);
+            center = getCenter(plane_object);
 
             if (((center.x < 0) && (movex < 0)) || ((center.x > SCREENWIDTH) && (movex > 0)))
                 movex = 0;
             if (((center.y < 0) && (movey < 0)) || ((center.y > SCREENHEIGHT) && (movey > 0)))
                 movey = 0;
 
-            move3dobject(Vector3d(movex, movey, 0), polys);
+            move3dobject(Vector3d(movex, movey, 0), plane_object);
+            /*
+            if (center_d.z <= -5)
+            {
+                move3dobject(Vector3d(0, 0, 0.01), ring_object);
+                if (center_d.z >= -45)
+                {
 
-            center_d = center;
-            movex_d = movex;
-            movey_d = movey;
+                    scale3dobject(1 + SCALE_AMOUNT*0.1, ring_object);
+                    scale *= 1 + (SCALE_AMOUNT*0.1);
+                }
+            }
+            else
+            {
+                move3dobject(Vector3d(0, 0, 1), ring_object);
+
+                scale3dobject(1 + SCALE_AMOUNT * 10, ring_object);
+                scale *= 1 + (SCALE_AMOUNT * 10);
+                
+            }
+            */
+
+            float step = 44 + center_d.z;
+            float speedstart = 0.000001, speedend = 3;
+            float startspeed = (100 - step)/100, endspeed = step / 100;
+            if (startspeed < 0)
+                startspeed = 0;
+            if (endspeed > 1)
+                endspeed = 1;
+
+            float moveamt = startspeed * speedstart + endspeed * speedend;
+
+            move3dobject(Vector3d(0, 0, 1) * moveamt, ring_object);
+            scale3dobject(1 + SCALE_AMOUNT * moveamt, ring_object);
+            scale *= 1 + (SCALE_AMOUNT * moveamt);
+
+            //reset
+            if ((center_d.z >= 1200))
+            {
+                move3dobject(Vector3d(0, 0, -1244), ring_object);
+
+                scale3dobject((1 / scale), ring_object);
+                scale *= 1 / scale;
+            }
         }
 
         // render current iteration
-        render_object(wm, polys);
+        std::vector<Polygon> all_objects = plane_object;
+        all_objects.insert(all_objects.end(), ring_object.begin(), ring_object.end());
+
+        render_object(wm, all_objects);
 
         // calc fps
         auto end = std::chrono::system_clock::now();
@@ -568,8 +670,8 @@ int main(int argc, char **argv)
         wm.printxyc(0, 0, ColorLut::getInstance().rgb_to_8bit(0, 255, 0), COLOR_BLACK, true, buf);
 
         std::ostringstream stream;
-        long distance = std::distance(polys.begin(), polys.end());
-        stream << "Currently rendering " << distance << " Polygons per iteration. Center_d: " << center_d.to_string() << " movex: " << movex_d << " movey: " << movey_d << "\n";
+        long distance = std::distance(plane_object.begin(), plane_object.end());
+        stream << "Currently rendering " << distance << " Polygons per iteration. Center of ring: " << center_d.to_string() << " scale: " << scale << "\n";
         wm.printxyc(0, 1, ColorLut::getInstance().rgb_to_8bit(255, 0, 0), COLOR_BLACK, true, stream.str().c_str());
 
         ++fps;

@@ -1,7 +1,7 @@
 #include "../include/render.hpp"
 
 #define Z_PERSPECTIVE 0.01 
-#define Z_PERSPECTIVE_COLOR 3
+#define Z_PERSPECTIVE_COLOR 6
 
 bool sortbyz(Polygon &lhs, Polygon &rhs)
 {
@@ -84,7 +84,8 @@ void fast_bresenham(Windowmanager &wm, Vector3d &colorstart, Vector3d &colorend,
     err = deltafastdir / 2;
 
     color = lut.getInstance().rgb_to_8bit(colorstart.x + zcolors, colorstart.y + zcolors, colorstart.z + zcolors);
-    wm.printxyc(x, y, color, color, true," ");
+    wm.printxyc(2* x, y, color, color, true," ");
+    wm.printxyc((2* x) +1, y, color, color, true," ");
 
     for (t = 0; t < deltafastdir; ++t)
     {
@@ -113,7 +114,8 @@ void fast_bresenham(Windowmanager &wm, Vector3d &colorstart, Vector3d &colorend,
         color = lut.getInstance().rgb_to_8bit(red, green, blue);
 
         // rasterise the pixel
-        wm.printxyc(x, y, color, color, true," ");
+        wm.printxyc(2* x, y, color, color, true," ");
+        wm.printxyc((2* x) +1, y, color, color, true," ");
     }
 }
 
